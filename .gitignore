@@ -1,0 +1,3 @@
+ollama-data/**
+qdrant-data/**
+n8n/.n8n/crash.journal

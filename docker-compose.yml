@@ -36,7 +36,8 @@ services:
     restart: unless-stopped
 
   n8n-import:
-    image: n8nio/n8n:latest
+    build: ./n8n
+    user: "1000:1000"
     hostname: n8n-import
     container_name: n8n-import
     entrypoint: /bin/sh
@@ -63,7 +64,7 @@ services:
       - db
 
   n8n:
-    image: n8nio/n8n:latest
+    build: ./n8n
     ports:
       - "5678:5678"
     environment:
@@ -88,14 +89,15 @@ services:
       - N8N_USER_MANAGEMENT_JWT_SECRET=${N8N_USER_MANAGEMENT_JWT_SECRET:-even-more-secret}
       - N8N_DEFAULT_BINARY_DATA_MODE=filesystem
       - OLLAMA_HOST=ollama:11434
+      - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true
     volumes:
-      - ./n8n/.n8n:/home/node/.n8n
       - ./n8n/demo-data:/demo-data
       - ./shared:/data/shared
     networks:
       - app-network
     depends_on:
       - db
+      - db-init
       - n8n-import
     restart: unless-stopped
 
@@ -140,7 +142,7 @@ services:
 
   db:
     image: postgres:15-alpine
-    restart: always
+    restart: unless-stopped
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
@@ -152,7 +154,22 @@ services:
       - "5432:5432"
     networks:
       - app-network
-      
+
+  db-init:
+    image: postgres:15-alpine
+    restart: "no"
+    depends_on:
+      - db
+    command: |
+      bash -c "until pg_isready -h db -p 5432 -U postgres; do sleep 1; done; 
+      psql -h db -U postgres -c \"SELECT 1 FROM pg_database WHERE datname = 'n8n';\" | grep -q 1 || 
+      psql -h db -U postgres -tc \"CREATE DATABASE n8n;\" && 
+      psql -h db -U postgres -c \"GRANT ALL PRIVILEGES ON DATABASE n8n TO postgres;\""
+    environment:
+      - PGPASSWORD=postgres
+    networks:
+      - app-network
+
   redpanda:
     image: redpandadata/redpanda:latest
     container_name: redpanda
